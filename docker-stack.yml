@@ -1,0 +1,102 @@
+version: '3.8'
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SwarmShop — Docker Stack para Docker Swarm Demo
+#  Servicios:
+#    nginx  → Balanceador de carga (1 réplica, puerto 80 expuesto al host)
+#    api    → API Node.js          (3 réplicas, solo red interna)
+#    web    → Frontend HTML        (2 réplicas, solo red interna)
+# ══════════════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # NGINX — Balanceador de carga / Reverse Proxy
+  # ──────────────────────────────────────────────────────────────────────────
+  nginx:
+    image: swarm-demo-nginx:latest
+    ports:
+      - "80:80"          # Único punto de entrada desde el host
+    networks:
+      - swarm-net
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      placement:
+        constraints:
+          - node.role == manager   # El LB siempre en el manager
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+    depends_on:
+      - api
+      - web
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # API — Node.js REST API (multi-réplica para demostrar balanceo)
+  # ──────────────────────────────────────────────────────────────────────────
+  api:
+    image: swarm-demo-api:latest
+    environment:
+      - PORT=3000
+      - SERVICE_NAME=api
+    networks:
+      - swarm-net
+    deploy:
+      replicas: 3               # ← Cambiar para escalar: docker service scale swarm_api=6
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+      update_config:
+        parallelism: 1          # Actualiza de 1 en 1 (rolling update)
+        delay: 10s
+        failure_action: rollback
+        order: start-first      # Levanta el nuevo antes de bajar el viejo
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # WEB — Frontend HTML estático servido por NGINX
+  # ──────────────────────────────────────────────────────────────────────────
+  web:
+    image: swarm-demo-web:latest
+    networks:
+      - swarm-net
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 64M
+
+# ──────────────────────────────────────────────────────────────────────────
+# NETWORKS — Overlay network para comunicación entre servicios en Swarm
+# ──────────────────────────────────────────────────────────────────────────
+networks:
+  swarm-net:
+    driver: overlay      # overlay = red virtual que cruza múltiples nodos Swarm
+    attachable: true     # Permite conectar contenedores manualmente (útil para debug)

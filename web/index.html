@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SwarmShop — Docker Swarm Demo</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a26;
+    --border: rgba(255,255,255,0.07);
+    --accent: #7c6ef0;
+    --accent2: #4ecdc4;
+    --accent3: #f7b731;
+    --text: #e8e8f0;
+    --muted: #6b6b80;
+    --success: #2dd4a7;
+    --danger: #ff6b6b;
+    --font: 'Space Grotesk', sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    min-height: 100vh;
+  }
+
+  /* BACKGROUND GRID */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(124,110,240,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124,110,240,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* NAV */
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(10,10,15,0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+  }
+
+  .logo {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .logo span { color: var(--accent); }
+
+  .nav-pills {
+    display: flex;
+    gap: 4px;
+  }
+  .nav-pill {
+    background: none;
+    border: 1px solid transparent;
+    color: var(--muted);
+    font-family: var(--font);
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 5px 14px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .nav-pill:hover, .nav-pill.active {
+    background: var(--surface2);
+    border-color: var(--border);
+    color: var(--text);
+  }
+  .nav-pill.active { color: var(--accent); border-color: rgba(124,110,240,0.3); }
+
+  /* STATUS BAR */
+  .status-bar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 2rem;
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    font-size: 0.75rem;
+    font-family: var(--mono);
+  }
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 6px;
+  }
+  .dot-green { background: var(--success); box-shadow: 0 0 8px var(--success); animation: pulse 2s infinite; }
+  .dot-red   { background: var(--danger); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+  .status-item { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+  .status-item strong { color: var(--text); }
+
+  /* LAYOUT */
+  main { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 2rem; }
+
+  .section { display: none; }
+  .section.active { display: block; }
+
+  /* CLUSTER DASHBOARD */
+  .grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 2rem;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    position: relative;
+    overflow: hidden;
+    transition: border-color .2s;
+  }
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--card-accent, var(--accent));
+  }
+  .stat-card:hover { border-color: rgba(124,110,240,0.3); }
+  .stat-label { font-size: 0.7rem; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+  .stat-value { font-size: 2rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+  .stat-sub { font-size: 0.75rem; color: var(--muted); margin-top: 6px; }
+
+  /* NODES GRID */
+  .section-title {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 12px;
+  }
+
+  .nodes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    margin-bottom: 2rem;
+  }
+
+  .node-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    transition: all .2s;
+    cursor: pointer;
+  }
+  .node-card:hover { border-color: rgba(124,110,240,0.3); transform: translateY(-1px); }
+  .node-card.manager { border-left: 3px solid var(--accent); }
+  .node-card.worker  { border-left: 3px solid var(--accent2); }
+  .node-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+  .node-name { font-weight: 600; font-size: 0.9rem; font-family: var(--mono); }
+  .badge {
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .badge-manager { background: rgba(124,110,240,0.15); color: var(--accent); }
+  .badge-worker  { background: rgba(78,205,196,0.12); color: var(--accent2); }
+  .badge-ok      { background: rgba(45,212,167,0.12); color: var(--success); }
+  .badge-down    { background: rgba(255,107,107,0.12); color: var(--danger); }
+
+  .node-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .node-meta-item { font-size: 0.75rem; }
+  .node-meta-item span { color: var(--muted); }
+
+  /* LOG TERMINAL */
+  .terminal {
+    background: #08080f;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 2rem;
+  }
+  .terminal-bar {
+    background: var(--surface);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .term-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .term-title { font-size: 0.75rem; color: var(--muted); margin-left: 8px; font-family: var(--mono); }
+  .terminal-body { padding: 1rem; font-family: var(--mono); font-size: 0.75rem; line-height: 1.8; max-height: 220px; overflow-y: auto; }
+  .log-line { display: flex; gap: 12px; }
+  .log-time { color: #444; min-width: 80px; }
+  .log-container { color: var(--accent2); min-width: 100px; }
+  .log-msg { color: #aaa; }
+  .log-msg.ok { color: var(--success); }
+  .log-msg.req { color: #c0c0e0; }
+
+  /* PRODUCTS */
+  .products-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 2rem;
+  }
+  .product-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    transition: all .2s;
+    cursor: pointer;
+  }
+  .product-card:hover { border-color: rgba(124,110,240,0.35); transform: translateY(-2px); }
+  .product-emoji { font-size: 2rem; margin-bottom: 12px; }
+  .product-name { font-weight: 600; font-size: 0.9rem; margin-bottom: 4px; }
+  .product-price { color: var(--accent3); font-weight: 700; font-size: 1.1rem; font-family: var(--mono); }
+  .product-stock { font-size: 0.75rem; color: var(--muted); margin-top: 6px; }
+  .served-by {
+    margin-top: 10px;
+    padding: 5px 8px;
+    background: rgba(78,205,196,0.08);
+    border: 1px solid rgba(78,205,196,0.15);
+    border-radius: 6px;
+    font-size: 0.68rem;
+    font-family: var(--mono);
+    color: var(--accent2);
+  }
+
+  /* LOAD TEST */
+  .load-panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 2rem;
+  }
+  .panel-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+  }
+  .panel-card h3 { font-size: 0.85rem; font-weight: 600; margin-bottom: 1rem; }
+
+  .btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-family: var(--font);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .2s;
+    width: 100%;
+    margin-bottom: 8px;
+  }
+  .btn:hover { background: #9080ff; transform: translateY(-1px); }
+  .btn.secondary { background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
+  .btn.secondary:hover { border-color: rgba(124,110,240,0.4); }
+  .btn.danger { background: rgba(255,107,107,0.15); border: 1px solid rgba(255,107,107,0.3); color: var(--danger); }
+
+  /* DISTRIBUTION BAR */
+  .dist-bar { margin-top: 1rem; }
+  .dist-label { display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px; }
+  .dist-track { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+  .dist-fill { height: 100%; border-radius: 3px; transition: width .5s ease; }
+
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 2px; }
+
+  @media (max-width: 768px) {
+    .grid-4 { grid-template-columns: repeat(2, 1fr); }
+    .load-panel { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">Swarm<span>Shop</span></div>
+  <div class="nav-pills">
+    <button class="nav-pill active" onclick="showSection('dashboard')">Dashboard</button>
+    <button class="nav-pill" onclick="showSection('products')">Productos</button>
+    <button class="nav-pill" onclick="showSection('loadtest')">Load Test</button>
+  </div>
+</nav>
+
+<div class="status-bar">
+  <div class="status-item">
+    <span class="status-dot dot-green" id="api-status-dot"></span>
+    <strong id="api-status-text">Conectando...</strong>
+  </div>
+  <div class="status-item">Réplicas activas: <strong id="stat-replicas">—</strong></div>
+  <div class="status-item">Requests totales: <strong id="stat-total-req">0</strong></div>
+  <div class="status-item">Containers únicos: <strong id="stat-containers">—</strong></div>
+  <div class="status-item" style="margin-left:auto; font-size:0.7rem; color: var(--muted)">
+    Conectado a: <strong id="api-url-display" style="color:var(--accent2)">…</strong>
+  </div>
+</div>
+
+<main>
+  <!-- DASHBOARD -->
+  <section class="section active" id="section-dashboard">
+    <div class="grid-4">
+      <div class="stat-card" style="--card-accent: var(--accent)">
+        <div class="stat-label">Contenedores vistos</div>
+        <div class="stat-value" id="d-containers">0</div>
+        <div class="stat-sub">IDs únicos respondiendo</div>
+      </div>
+      <div class="stat-card" style="--card-accent: var(--accent2)">
+        <div class="stat-label">Total requests</div>
+        <div class="stat-value" id="d-requests">0</div>
+        <div class="stat-sub">Acumulado en sesión</div>
+      </div>
+      <div class="stat-card" style="--card-accent: var(--accent3)">
+        <div class="stat-label">Avg latencia</div>
+        <div class="stat-value" id="d-latency">—</div>
+        <div class="stat-sub">ms por request</div>
+      </div>
+      <div class="stat-card" style="--card-accent: var(--success)">
+        <div class="stat-label">API status</div>
+        <div class="stat-value" id="d-status" style="font-size:1.1rem; padding-top:8px">—</div>
+        <div class="stat-sub" id="d-uptime">Verificando...</div>
+      </div>
+    </div>
+
+    <div class="section-title">Contenedores respondiendo (balanceo visible)</div>
+    <div class="nodes-grid" id="nodes-grid">
+      <div class="node-card" style="border-color: rgba(124,110,240,0.2); opacity:.5">
+        <div class="node-header">
+          <span class="node-name">Esperando respuestas...</span>
+          <span class="badge badge-ok"><span class="spinner"></span></span>
+        </div>
+        <div style="font-size:0.75rem; color: var(--muted)">Haciendo requests al API para descubrir nodos</div>
+      </div>
+    </div>
+
+    <div class="section-title">Log de actividad en tiempo real</div>
+    <div class="terminal">
+      <div class="terminal-bar">
+        <div class="term-dot" style="background:#ff6b6b"></div>
+        <div class="term-dot" style="background:#f7b731"></div>
+        <div class="term-dot" style="background:#2dd4a7"></div>
+        <span class="term-title">swarm-demo / requests log</span>
+      </div>
+      <div class="terminal-body" id="log-body">
+        <div class="log-line">
+          <span class="log-time">00:00:00</span>
+          <span class="log-container">system</span>
+          <span class="log-msg ok">▶ Iniciando dashboard — esperando conexión con API...</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRODUCTS -->
+  <section class="section" id="section-products">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem">
+      <div>
+        <h2 style="font-size:1.2rem; font-weight:700">Catálogo de productos</h2>
+        <p style="font-size:0.8rem; color:var(--muted); margin-top:4px">Cada carga muestra qué contenedor respondió</p>
+      </div>
+      <button class="btn" style="width:auto; padding:8px 20px" onclick="loadProducts()">↻ Recargar</button>
+    </div>
+    <div class="products-grid" id="products-grid">
+      <div style="color:var(--muted); font-size:0.85rem">Cargando productos...</div>
+    </div>
+  </section>
+
+  <!-- LOAD TEST -->
+  <section class="section" id="section-loadtest">
+    <div class="load-panel">
+      <div class="panel-card">
+        <h3>⚡ Prueba de balanceo de carga</h3>
+        <button class="btn" onclick="runLoadTest(10)">Enviar 10 requests</button>
+        <button class="btn secondary" onclick="runLoadTest(50)">Enviar 50 requests</button>
+        <button class="btn secondary" onclick="runLoadTest(100)">Enviar 100 requests</button>
+        <button class="btn danger" id="stop-btn" onclick="stopTest()" style="display:none">⏹ Detener</button>
+        <div style="margin-top:1rem; font-size:0.8rem; color:var(--muted)">
+          Cada request es respondido por un contenedor diferente. Observa cómo el balanceador distribuye la carga.
+        </div>
+      </div>
+      <div class="panel-card">
+        <h3>📊 Distribución por contenedor</h3>
+        <div id="dist-bars">
+          <div style="color:var(--muted); font-size:0.8rem">Ejecuta una prueba para ver la distribución</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title">Resultados del test</div>
+    <div class="terminal">
+      <div class="terminal-bar">
+        <div class="term-dot" style="background:#ff6b6b"></div>
+        <div class="term-dot" style="background:#f7b731"></div>
+        <div class="term-dot" style="background:#2dd4a7"></div>
+        <span class="term-title">load test output</span>
+      </div>
+      <div class="terminal-body" id="test-log">
+        <div class="log-line">
+          <span class="log-time">—</span>
+          <span class="log-msg ok">Listo para ejecutar prueba de carga</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const API_BASE = window.API_BASE || '';
+const emojis = ['💻','🖥️','⌨️','🖱️','📷'];
+
+let totalRequests = 0;
+let seenContainers = {};
+let latencies = [];
+let testRunning = false;
+let stopRequested = false;
+
+document.getElementById('api-url-display').textContent = window.location.host || 'localhost:80';
+
+function showSection(name) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-pill').forEach(b => b.classList.remove('active'));
+  document.getElementById('section-' + name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'products') loadProducts();
+}
+
+function log(container, msg, type='req') {
+  const body = document.getElementById('log-body');
+  const now = new Date();
+  const time = now.toTimeString().substring(0,8);
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `<span class="log-time">${time}</span><span class="log-container">${container.substring(0,10)}</span><span class="log-msg ${type}">${msg}</span>`;
+  body.appendChild(line);
+  body.scrollTop = body.scrollHeight;
+  // Keep max 80 lines
+  while (body.children.length > 80) body.removeChild(body.firstChild);
+}
+
+function testLog(msg, type='req') {
+  const body = document.getElementById('test-log');
+  const now = new Date();
+  const time = now.toTimeString().substring(0,8);
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `<span class="log-time">${time}</span><span class="log-msg ${type}">${msg}</span>`;
+  body.appendChild(line);
+  body.scrollTop = body.scrollHeight;
+  while (body.children.length > 100) body.removeChild(body.firstChild);
+}
+
+async function fetchHealth() {
+  const t0 = Date.now();
+  try {
+    const r = await fetch(API_BASE + '/api/health');
+    const data = await r.json();
+    const latency = Date.now() - t0;
+    latencies.push(latency);
+    if (latencies.length > 20) latencies.shift();
+    totalRequests++;
+
+    const cid = data.container_id || data.hostname?.substring(0,10);
+    if (!seenContainers[cid]) {
+      seenContainers[cid] = { ...data, count: 0, latency_sum: 0 };
+      log(cid, `🆕 Nuevo contenedor descubierto: ${cid}`, 'ok');
+    }
+    seenContainers[cid].count++;
+    seenContainers[cid].latency_sum += latency;
+    seenContainers[cid].uptime_seconds = data.uptime_seconds;
+
+    updateDashboard(data, latency);
+    document.getElementById('api-status-dot').className = 'status-dot dot-green';
+    document.getElementById('api-status-text').textContent = 'API online';
+    return { data, latency };
+  } catch(e) {
+    document.getElementById('api-status-dot').className = 'status-dot dot-red';
+    document.getElementById('api-status-text').textContent = 'API offline';
+    document.getElementById('d-status').textContent = '❌ Offline';
+    throw e;
+  }
+}
+
+function updateDashboard(data, latency) {
+  const cid = data.container_id || data.hostname?.substring(0,10);
+  const avgLat = Math.round(latencies.reduce((a,b)=>a+b,0)/latencies.length);
+  const containerCount = Object.keys(seenContainers).length;
+
+  document.getElementById('d-containers').textContent = containerCount;
+  document.getElementById('d-requests').textContent = totalRequests;
+  document.getElementById('d-latency').textContent = avgLat + 'ms';
+  document.getElementById('d-status').textContent = '✅ Healthy';
+  document.getElementById('d-uptime').textContent = `Uptime: ${data.uptime_seconds}s`;
+  document.getElementById('stat-replicas').textContent = containerCount;
+  document.getElementById('stat-total-req').textContent = totalRequests;
+  document.getElementById('stat-containers').textContent = containerCount;
+
+  // Update nodes grid
+  const colors = ['var(--accent)', 'var(--accent2)', 'var(--accent3)', 'var(--success)', '#f093fb'];
+  const grid = document.getElementById('nodes-grid');
+  grid.innerHTML = '';
+  Object.entries(seenContainers).forEach(([id, info], i) => {
+    const color = colors[i % colors.length];
+    const pct = Math.round((info.count / totalRequests) * 100);
+    const avgL = Math.round(info.latency_sum / info.count);
+    const isActive = id === cid;
+    const card = document.createElement('div');
+    card.className = 'node-card worker';
+    card.style.borderLeftColor = color;
+    if (isActive) card.style.borderColor = color.replace('var(--', '').replace(')', '');
+    card.innerHTML = `
+      <div class="node-header">
+        <span class="node-name" style="color:${color}">${id}</span>
+        <span class="badge badge-ok">running</span>
+      </div>
+      <div class="node-meta">
+        <div class="node-meta-item"><span>Requests:</span> ${info.count}</div>
+        <div class="node-meta-item"><span>% carga:</span> ${pct}%</div>
+        <div class="node-meta-item"><span>Avg latency:</span> ${avgL}ms</div>
+        <div class="node-meta-item"><span>Uptime:</span> ${info.uptime_seconds}s</div>
+      </div>
+      <div style="margin-top:8px; height:3px; background:var(--surface2); border-radius:2px; overflow:hidden">
+        <div style="height:100%; width:${pct}%; background:${color}; transition:width .4s ease; border-radius:2px"></div>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+
+  log(cid, `GET /api/health → 200 OK (${latency}ms)`);
+}
+
+async function loadProducts() {
+  const grid = document.getElementById('products-grid');
+  grid.innerHTML = '<div style="color:var(--muted); font-size:0.85rem">Cargando...</div>';
+  try {
+    const t0 = Date.now();
+    const r = await fetch(API_BASE + '/api/products');
+    const data = await r.json();
+    const latency = Date.now() - t0;
+    totalRequests++;
+    const cid = data.meta?.served_by?.container_id || 'unknown';
+    grid.innerHTML = '';
+    data.products.forEach((p, i) => {
+      const card = document.createElement('div');
+      card.className = 'product-card';
+      card.innerHTML = `
+        <div class="product-emoji">${emojis[i % emojis.length]}</div>
+        <div class="product-name">${p.name}</div>
+        <div class="product-price">$${p.price}</div>
+        <div class="product-stock">Stock: ${p.stock} unidades</div>
+        <div class="served-by">📦 container: ${cid}</div>
+      `;
+      grid.appendChild(card);
+    });
+  } catch(e) {
+    grid.innerHTML = '<div style="color:var(--danger); font-size:0.85rem">❌ Error conectando al API. ¿Está el stack corriendo?</div>';
+  }
+}
+
+async function runLoadTest(n) {
+  if (testRunning) return;
+  testRunning = true;
+  stopRequested = false;
+  document.getElementById('stop-btn').style.display = 'block';
+  const dist = {};
+
+  testLog(`▶ Iniciando test: ${n} requests...`, 'ok');
+  let success = 0, errors = 0;
+
+  for (let i = 0; i < n; i++) {
+    if (stopRequested) break;
+    try {
+      const { data, latency } = await fetchHealth();
+      const cid = data.container_id || data.hostname?.substring(0,10);
+      dist[cid] = (dist[cid] || 0) + 1;
+      success++;
+      totalRequests++;
+      if (i % 5 === 0 || i < 5) {
+        testLog(`[${i+1}/${n}] → ${cid} (${latency}ms)`);
+      }
+      updateDistBars(dist, success);
+    } catch(e) {
+      errors++;
+      testLog(`[${i+1}/${n}] ❌ Error: ${e.message}`, 'ok');
+    }
+    await new Promise(r => setTimeout(r, 50));
+  }
+
+  testLog(`✅ Test completado: ${success} ok, ${errors} errores`, 'ok');
+  testLog(`📊 Contenedores únicos respondiendo: ${Object.keys(dist).length}`, 'ok');
+  document.getElementById('stop-btn').style.display = 'none';
+  testRunning = false;
+}
+
+function stopTest() {
+  stopRequested = true;
+  testLog('⏹ Test detenido por el usuario');
+}
+
+function updateDistBars(dist, total) {
+  const colors = ['var(--accent)', 'var(--accent2)', 'var(--accent3)', 'var(--success)', '#f093fb'];
+  const container = document.getElementById('dist-bars');
+  container.innerHTML = '';
+  Object.entries(dist).sort((a,b) => b[1]-a[1]).forEach(([id, count], i) => {
+    const pct = Math.round((count / total) * 100);
+    const color = colors[i % colors.length];
+    container.innerHTML += `
+      <div class="dist-bar">
+        <div class="dist-label">
+          <span style="font-family:var(--mono); font-size:0.75rem; color:${color}">${id}</span>
+          <span style="color:var(--muted); font-size:0.75rem">${count} reqs (${pct}%)</span>
+        </div>
+        <div class="dist-track">
+          <div class="dist-fill" style="width:${pct}%; background:${color}"></div>
+        </div>
+      </div>`;
+  });
+}
+
+// Poll health every 2s
+async function poll() {
+  try { await fetchHealth(); } catch(e) {}
+  setTimeout(poll, 2000);
+}
+poll();
+</script>
+</body>
+</html>
